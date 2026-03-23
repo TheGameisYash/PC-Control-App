@@ -18,3 +18,5 @@ local.properties
 
 # IntelliJ
 *.iml
+
+local.properties
