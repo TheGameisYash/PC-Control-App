@@ -1,25 +1,32 @@
 package com.tony.pcremote
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.*
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -27,94 +34,155 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.hypot
 
+sealed class RemoteMode(val label: String, val icon: ImageVector) {
+    object Mouse : RemoteMode("Mouse", Icons.Rounded.Mouse)
+    object Media : RemoteMode("Media", Icons.Rounded.PlayArrow)
+    object Power : RemoteMode("Power", Icons.Rounded.PowerSettingsNew)
+    object Presentation : RemoteMode("PPT", Icons.Rounded.Slideshow)
+    object Browser : RemoteMode("Web", Icons.Rounded.Language)
+}
+
 @Composable
 fun TouchpadTab(viewModel: MainViewModel) {
-    var containerSize by remember { mutableStateOf(IntSize.Zero) }
     var gestureHint   by remember { mutableStateOf("") }
-    val scope         = rememberCoroutineScope()
-
-    val handler = remember {
-        TrackpadGestureHandler(send = { viewModel.send(it) }, scrollSpeed = 3.5f)
-    }
+    var selectedMode  by remember { mutableStateOf<RemoteMode>(RemoteMode.Mouse) }
+    
+    val handler = remember { TrackpadGestureHandler(send = { viewModel.send(it) }, scrollSpeed = 3.5f) }
 
     LaunchedEffect(gestureHint) {
-        if (gestureHint.isNotEmpty()) { delay(1200); gestureHint = "" }
+        if (gestureHint.isNotEmpty()) {
+            delay(1000)
+            gestureHint = ""
+        }
     }
+
+    val modes = remember { listOf(RemoteMode.Mouse, RemoteMode.Media, RemoteMode.Power, RemoteMode.Presentation, RemoteMode.Browser) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D1117))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-
-        // ── Header ────────────────────────────────────────────────
-        Row(
-            modifier              = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment     = Alignment.CenterVertically
+        // ── Enhanced Mode Selector ──────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth().height(64.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFF121212),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
         ) {
-            Column {
-                Text(
-                    "Trackpad",
-                    color      = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize   = 18.sp
-                )
-                Text(
-                    "Touch surface below to control cursor",
-                    color    = Color(0xFF8B949E),
-                    fontSize = 11.sp
-                )
-            }
-            AnimatedVisibility(visible = gestureHint.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
-                Text(
-                    gestureHint,
-                    color      = Color(0xFF2979FF),
-                    fontSize   = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier   = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF2979FF).copy(alpha = 0.12f))
-                        .border(1.dp, Color(0xFF2979FF).copy(alpha = 0.3f), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
-                )
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                modes.forEach { mode ->
+                    val isSelected = selectedMode == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSelected) Color(0xFF00E5FF).copy(alpha = 0.1f) else Color.Transparent)
+                            .clickable { selectedMode = mode },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                mode.icon, 
+                                null, 
+                                tint = if (isSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.4f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                mode.label, 
+                                fontSize = 10.sp, 
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color(0xFF00E5FF) else Color.White.copy(alpha = 0.4f)
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        // ── Trackpad Surface ──────────────────────────────────────
+        // ── Dynamic Control Area ────────────────────────────────
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            Crossfade(
+                targetState = selectedMode,
+                animationSpec = tween(250, easing = FastOutSlowInEasing),
+                label = "ModeTransition"
+            ) { mode ->
+                when (mode) {
+                    is RemoteMode.Mouse -> {
+                        TrackpadView(
+                            viewModel = viewModel,
+                            handler = handler,
+                            onGesture = { gestureHint = it },
+                            hint = gestureHint
+                        )
+                    }
+                    is RemoteMode.Media -> MediaControls(viewModel)
+                    is RemoteMode.Power -> PowerControls(viewModel)
+                    is RemoteMode.Presentation -> PresentationControls(viewModel)
+                    is RemoteMode.Browser -> BrowserControls(viewModel)
+                }
+            }
+        }
+
+        // ── Mouse Buttons ───────────────────────────────────────
+        if (selectedMode == RemoteMode.Mouse) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(80.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ModernButton("L", Modifier.weight(1.5f), Color(0xFF00E5FF)) { viewModel.send(BinaryProtocol.mouseLeft()) }
+                ModernButton("M", Modifier.weight(1f), Color(0xFF7C4DFF)) { viewModel.send(BinaryProtocol.mouseMiddle()) }
+                ModernButton("R", Modifier.weight(1.5f), Color(0xFF00E5FF)) { viewModel.send(BinaryProtocol.mouseRight()) }
+            }
+        }
+    }
+}
+
+@Composable
+fun TrackpadView(
+    viewModel: MainViewModel,
+    handler: TrackpadGestureHandler,
+    onGesture: (String) -> Unit,
+    hint: String
+) {
+    val scope = rememberCoroutineScope()
+
+    Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
                 .weight(1f)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF161B22))
-                .border(1.dp, Color(0xFF30363D), RoundedCornerShape(18.dp))
-                .onSizeChanged { containerSize = it }
-                .pointerInput(containerSize) {
-                    val sensitivity = 2.2f
-                    val noiseGate   = 1.0f
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(32.dp))
+                .background(Color(0xFF0A0A0A))
+                .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.2f), RoundedCornerShape(32.dp))
+                .pointerInput(Unit) {
+                    val sensitivity = 2.4f
                     val dragSlop    = 8f
-                    val tapTimeout  = 220L
-                    val longPressMs = 550L
+                    val tapTimeout  = 200L
+                    val longPressMs = 500L
 
                     awaitEachGesture {
                         handler.cancelInertia()
                         handler.resetScroll()
                         val firstDown = awaitFirstDown(requireUnconsumed = false)
                         val prevPos   = mutableMapOf(firstDown.id to firstDown.position)
-                        var maxFingers    = 1
-                        var dragging      = false
-                        var consumed      = false
+                        var maxFingers = 1
+                        var dragging   = false
+                        var consumed   = false
                         var pinchPrevDist = -1f
-                        val startTime     = System.currentTimeMillis()
+                        val startTime  = System.currentTimeMillis()
 
                         val lpJob = scope.launch {
                             delay(longPressMs)
                             if (!dragging && maxFingers == 1) {
                                 viewModel.send(BinaryProtocol.mouseRight())
-                                gestureHint = "🖱️ Right Click"
+                                onGesture("🖱️ Right Click")
                                 consumed = true
                             }
                         }
@@ -127,7 +195,7 @@ fun TouchpadTab(viewModel: MainViewModel) {
                                     lpJob.cancel()
                                     if (!dragging && !consumed) {
                                         val dur = System.currentTimeMillis() - startTime
-                                        if (dur < tapTimeout) gestureHint = handler.handleTap(maxFingers)
+                                        if (dur < tapTimeout) onGesture(handler.handleTap(maxFingers))
                                     }
                                     if (maxFingers >= 2) handler.startInertia(scope)
                                     break
@@ -135,64 +203,54 @@ fun TouchpadTab(viewModel: MainViewModel) {
                                 when (active.size) {
                                     1 -> {
                                         val c = active[0]
-                                        val prev  = prevPos[c.id] ?: c.position
-                                        val rawDx = c.position.x - prev.x
-                                        val rawDy = c.position.y - prev.y
-                                        if (abs(rawDx) >= noiseGate || abs(rawDy) >= noiseGate) {
-                                            if (!dragging && (abs(rawDx) > dragSlop || abs(rawDy) > dragSlop)) {
+                                        val prev = prevPos[c.id] ?: c.position
+                                        val dx = ((c.position.x - prev.x) * sensitivity).toInt().coerceIn(-150, 150)
+                                        val dy = ((c.position.y - prev.y) * sensitivity).toInt().coerceIn(-150, 150)
+                                        if (abs(dx) > 0 || abs(dy) > 0) {
+                                            if (!dragging && (abs(dx) > dragSlop || abs(dy) > dragSlop)) {
                                                 dragging = true; lpJob.cancel()
                                             }
-                                            if (dragging) {
-                                                val dx = (rawDx * sensitivity).toInt().coerceIn(-150, 150)
-                                                val dy = (rawDy * sensitivity).toInt().coerceIn(-150, 150)
-                                                if (dx != 0 || dy != 0) viewModel.send(BinaryProtocol.mouseMove(dx, dy))
-                                            }
+                                            if (dragging) viewModel.send(BinaryProtocol.mouseMove(dx, dy))
                                         }
                                         prevPos[c.id] = c.position; c.consume()
                                     }
                                     2 -> {
                                         lpJob.cancel(); dragging = true
                                         val c0 = active[0]; val c1 = active[1]
-                                        val curDist  = hypot(c0.position.x - c1.position.x, c0.position.y - c1.position.y)
-                                        val curMidX  = (c0.position.x + c1.position.x) / 2f
-                                        val curMidY  = (c0.position.y + c1.position.y) / 2f
-                                        val prevMidX = ((prevPos[c0.id]?.x ?: curMidX) + (prevPos[c1.id]?.x ?: curMidX)) / 2f
+                                        val curDist = hypot(c0.position.x - c1.position.x, c0.position.y - c1.position.y)
+                                        val curMidY = (c0.position.y + c1.position.y) / 2f
+                                        val curMidX = (c0.position.x + c1.position.x) / 2f
                                         val prevMidY = ((prevPos[c0.id]?.y ?: curMidY) + (prevPos[c1.id]?.y ?: curMidY)) / 2f
-                                        val prevDist = if (pinchPrevDist < 0f) { pinchPrevDist = curDist; curDist }
-                                        else hypot((prevPos[c0.id]?.x ?: c0.position.x) - (prevPos[c1.id]?.x ?: c1.position.x),
-                                            (prevPos[c0.id]?.y ?: c0.position.y) - (prevPos[c1.id]?.y ?: c1.position.y))
-                                        val dDist = curDist - prevDist
-                                        val dCy = prevMidY - curMidY; val dCx = prevMidX - curMidX
-                                        if (abs(dDist) > 6f) {
-                                            viewModel.send(BinaryProtocol.ctrlScroll(if (dDist > 0) 2 else -2))
-                                            gestureHint = if (dDist > 0) "🔍 Zoom In" else "🔍 Zoom Out"
+                                        val prevMidX = ((prevPos[c0.id]?.x ?: curMidX) + (prevPos[c1.id]?.x ?: curMidX)) / 2f
+                                        val prevDist = if (pinchPrevDist < 0f) curDist else pinchPrevDist
+                                        
+                                        if (abs(curDist - prevDist) > 15f) {
+                                            viewModel.send(BinaryProtocol.ctrlScroll(if (curDist > prevDist) 2 else -2))
+                                            onGesture(if (curDist > prevDist) "🔍 Zoom In" else "🔍 Zoom Out")
                                             pinchPrevDist = curDist
                                         } else {
-                                            handler.updateVelocity(dCx, dCy)
-                                            val (sy, sx) = handler.accumulateScroll(dCy, dCx)
+                                            val dy = prevMidY - curMidY; val dx = prevMidX - curMidX
+                                            handler.updateVelocity(dx, dy)
+                                            val (sy, sx) = handler.accumulateScroll(dy, dx)
                                             if (sy != 0) viewModel.send(BinaryProtocol.scroll(sy))
                                             if (sx != 0) viewModel.send(BinaryProtocol.hScroll(sx))
                                         }
-                                        pinchPrevDist = curDist
                                         active.forEach { prevPos[it.id] = it.position; it.consume() }
                                     }
                                     else -> {
                                         lpJob.cancel(); dragging = true
                                         if (!consumed) {
-                                            val pts  = active.take(3)
-                                            val cy3  = pts.sumOf { it.position.y.toDouble() }.toFloat() / 3f
-                                            val cx3  = pts.sumOf { it.position.x.toDouble() }.toFloat() / 3f
-                                            val pCy3 = pts.sumOf { (prevPos[it.id]?.y ?: cy3).toDouble() }.toFloat() / 3f
-                                            val pCx3 = pts.sumOf { (prevPos[it.id]?.x ?: cx3).toDouble() }.toFloat() / 3f
-                                            val dy3 = pCy3 - cy3; val dx3 = pCx3 - cx3
-                                            when {
-                                                abs(dy3) > abs(dx3) && dy3 > 40f  -> { viewModel.send(BinaryProtocol.winTab());   gestureHint = "🗂 Task View";    consumed = true }
-                                                abs(dy3) > abs(dx3) && dy3 < -40f -> { viewModel.send(BinaryProtocol.winD());     gestureHint = "🖥 Show Desktop"; consumed = true }
-                                                abs(dx3) > abs(dy3) && dx3 > 40f  -> { viewModel.send(BinaryProtocol.altRight()); gestureHint = "→ Forward";       consumed = true }
-                                                abs(dx3) > abs(dy3) && dx3 < -40f -> { viewModel.send(BinaryProtocol.altLeft());  gestureHint = "← Back";          consumed = true }
+                                            val pts = active.take(3)
+                                            val cy3 = pts.map { it.position.y }.average().toFloat()
+                                            val pcy3 = pts.map { prevPos[it.id]?.y ?: it.position.y }.average().toFloat()
+                                            val dy3 = pcy3 - cy3
+                                            if (abs(dy3) > 40f) {
+                                                if (dy3 > 0) { viewModel.send(BinaryProtocol.winTab()); onGesture("🗂 Task View") }
+                                                else { viewModel.send(BinaryProtocol.winD()); onGesture("🖥 Desktop") }
+                                                consumed = true
                                             }
-                                            pts.forEach { prevPos[it.id] = it.position; it.consume() }
                                         }
+                                        active.forEach { prevPos[it.id] = it.position; it.consume() }
                                     }
                                 }
                             }
@@ -201,88 +259,204 @@ fun TouchpadTab(viewModel: MainViewModel) {
                 },
             contentAlignment = Alignment.Center
         ) {
-            if (gestureHint.isEmpty()) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier            = Modifier.padding(24.dp)
+            Canvas(modifier = Modifier.fillMaxSize().graphicsLayer {
+                renderEffect = null 
+            }) {
+                val step = 48.dp.toPx()
+                for (x in 0..(size.width / step).toInt()) {
+                    drawLine(Color(0xFF00E5FF).copy(alpha = 0.03f), Offset(x * step, 0f), Offset(x * step, size.height))
+                }
+                for (y in 0..(size.height / step).toInt()) {
+                    drawLine(Color(0xFF00E5FF).copy(alpha = 0.03f), Offset(0f, y * step), Offset(size.width, y * step))
+                }
+            }
+            
+            if (hint.isNotEmpty()) {
+                Surface(
+                    color = Color(0xFF00E5FF).copy(alpha = 0.15f), 
+                    shape = CircleShape,
+                    modifier = Modifier.align(Alignment.Center)
                 ) {
-                    Text("🖱️", fontSize = 32.sp)
                     Text(
-                        "Move your finger to control cursor",
-                        color     = Color(0xFF484F58),
-                        fontSize  = 13.sp,
-                        textAlign = TextAlign.Center
+                        hint, 
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), 
+                        color = Color(0xFF00E5FF), 
+                        fontWeight = FontWeight.Black, 
+                        fontSize = 12.sp
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        listOf(
-                            "1 finger  →  move cursor",
-                            "2 fingers →  scroll",
-                            "Pinch     →  zoom",
-                            "2-tap     →  right click",
-                            "3-swipe ↑ →  Task View",
-                            "3-swipe ↓ →  Show Desktop"
-                        ).forEach {
-                            Text(it, color = Color(0xFF30363D), fontSize = 11.sp)
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .width(48.dp)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0xFF0A0A0A))
+                .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(24.dp))
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        val sy = (dragAmount.y * -0.6f).toInt()
+                        if (sy != 0) viewModel.send(BinaryProtocol.scroll(sy))
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(40.dp)) {
+                Icon(Icons.Rounded.KeyboardArrowUp, null, tint = Color.White.copy(alpha = 0.2f))
+                Box(modifier = Modifier.size(4.dp, 100.dp).clip(CircleShape).background(Color(0xFF00E5FF).copy(alpha = 0.2f)))
+                Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White.copy(alpha = 0.2f))
+            }
+        }
+    }
+}
+
+@Composable
+fun MediaControls(viewModel: MainViewModel) {
+    ControlGrid(
+        listOf(
+            { ControlItem("Prev", Icons.Rounded.SkipPrevious, Color(0xFFFF4081)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.MEDIA_PREV)) } },
+            { ControlItem("Play/Pause", Icons.Rounded.PlayCircle, Color(0xFF00E5FF)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.MEDIA_PLAY)) } },
+            { ControlItem("Next", Icons.Rounded.SkipNext, Color(0xFFFF4081)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.MEDIA_NEXT)) } },
+            { ControlItem("Vol -", Icons.AutoMirrored.Rounded.VolumeDown, Color(0xFF7C4DFF)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.VOL_DOWN)) } },
+            { ControlItem("Mute", Icons.AutoMirrored.Rounded.VolumeOff, Color(0xFF444444)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.VOL_MUTE)) } },
+            { ControlItem("Vol +", Icons.AutoMirrored.Rounded.VolumeUp, Color(0xFF7C4DFF)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.VOL_UP)) } }
+        )
+    )
+}
+
+@Composable
+fun PowerControls(viewModel: MainViewModel) {
+    var confirmType by remember { mutableStateOf<String?>(null) }
+    
+    if (confirmType != null) {
+        AlertDialog(
+            onDismissRequest = { confirmType = null },
+            containerColor = Color(0xFF121212),
+            title = { Text("Are you sure?", color = Color.White) },
+            text = { Text("PC will ${confirmType?.lowercase()} immediately.", color = Color.White.copy(alpha = 0.6f)) },
+            confirmButton = {
+                Button(
+                    onClick = { 
+                        when (confirmType) {
+                            "Shutdown" -> viewModel.shutdown()
+                            "Restart"  -> viewModel.restart()
+                            "Sleep"    -> viewModel.sleep()
                         }
+                        confirmType = null 
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) { Text("Confirm") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmType = null }) { Text("Cancel", color = Color.White.copy(alpha = 0.4f)) }
+            }
+        )
+    }
+
+    ControlGrid(
+        listOf(
+            { ControlItem("Lock", Icons.Rounded.Lock, Color(0xFF00E5FF)) { viewModel.send(BinaryProtocol.keyCombo(KeyCodes.WIN, KeyCodes.L)) } },
+            { ControlItem("Sleep", Icons.Rounded.Bedtime, Color(0xFF7C4DFF)) { confirmType = "Sleep" } },
+            { ControlItem("Restart", Icons.Rounded.RestartAlt, Color(0xFFFFAB40)) { confirmType = "Restart" } },
+            { ControlItem("Shutdown", Icons.Rounded.PowerSettingsNew, Color(0xFFFF5252)) { confirmType = "Shutdown" } }
+        )
+    )
+}
+
+@Composable
+fun PresentationControls(viewModel: MainViewModel) {
+    ControlGrid(
+        listOf(
+            { ControlItem("Start (F5)", Icons.Rounded.PlayArrow, Color(0xFF00E5FF)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.F5)) } },
+            { ControlItem("End (Esc)", Icons.Rounded.Close, Color(0xFFFF5252)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.ESC)) } },
+            { ControlItem("Previous", Icons.AutoMirrored.Rounded.ArrowBack, Color(0xFF7C4DFF)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.LEFT)) } },
+            { ControlItem("Next", Icons.AutoMirrored.Rounded.ArrowForward, Color(0xFF7C4DFF)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.RIGHT)) } }
+        )
+    )
+}
+
+@Composable
+fun BrowserControls(viewModel: MainViewModel) {
+    ControlGrid(
+        listOf(
+            { ControlItem("Back", Icons.AutoMirrored.Rounded.ArrowBackIos, Color(0xFF7C4DFF)) { viewModel.send(BinaryProtocol.altLeft()) } },
+            { ControlItem("Refresh", Icons.Rounded.Refresh, Color(0xFF00E5FF)) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.F5)) } },
+            { ControlItem("Forward", Icons.AutoMirrored.Rounded.ArrowForwardIos, Color(0xFF7C4DFF)) { viewModel.send(BinaryProtocol.altRight()) } },
+            { ControlItem("New Tab", Icons.Rounded.Add, Color(0xFFFF4081)) { viewModel.send(BinaryProtocol.keyCombo(KeyCodes.CTRL, KeyCodes.T)) } },
+            { ControlItem("Close Tab", Icons.Rounded.Close, Color(0xFFFF5252)) { viewModel.send(BinaryProtocol.keyCombo(KeyCodes.CTRL, KeyCodes.W)) } },
+            { ControlItem("Downloads", Icons.Rounded.Download, Color(0xFF00E5FF)) { viewModel.send(BinaryProtocol.keyCombo(KeyCodes.CTRL, KeyCodes.J)) } }
+        )
+    )
+}
+
+@Composable
+fun ControlGrid(items: List<@Composable () -> Unit>) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(32.dp))
+            .background(Color(0xFF0A0A0A))
+            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(32.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        items.chunked(2).forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                rowItems.forEach { item ->
+                    Box(modifier = Modifier.weight(1f)) {
+                        item()
                     }
                 }
-            }
-        }
-
-        // ── Mouse Buttons ─────────────────────────────────────────
-        Row(
-            modifier              = Modifier.fillMaxWidth().height(56.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { viewModel.send(BinaryProtocol.mouseLeft()); gestureHint = "◀ Left Click" },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                shape    = RoundedCornerShape(14.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF2979FF))
-            ) {
-                Text("LEFT", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
-            Button(
-                onClick = { viewModel.send(BinaryProtocol.mouseMiddle()); gestureHint = "● Middle" },
-                modifier = Modifier.width(52.dp).fillMaxHeight(),
-                shape    = RoundedCornerShape(14.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF21262D))
-            ) { Text("●", fontSize = 16.sp, color = Color(0xFF8B949E)) }
-            Button(
-                onClick = { viewModel.send(BinaryProtocol.mouseRight()); gestureHint = "Right Click ▶" },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                shape    = RoundedCornerShape(14.dp),
-                colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF21262D))
-            ) {
-                Text("RIGHT", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF8B949E))
-            }
-        }
-
-        // ── Scroll / Nav Row ──────────────────────────────────────
-        Row(
-            modifier              = Modifier.fillMaxWidth().height(44.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(
-                "◀◀" to { viewModel.send(BinaryProtocol.altLeft()) },
-                "▲"  to { viewModel.send(BinaryProtocol.scroll(5)) },
-                "▼"  to { viewModel.send(BinaryProtocol.scroll(-5)) },
-                "▶▶" to { viewModel.send(BinaryProtocol.altRight()) }
-            ).forEach { (label, action) ->
-                Button(
-                    onClick  = action,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    shape    = RoundedCornerShape(10.dp),
-                    colors   = ButtonDefaults.buttonColors(containerColor = Color(0xFF161B22))
-                ) {
-                    Text(label, color = Color(0xFF8B949E), fontSize = 14.sp)
+                if (rowItems.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ControlItem(label: String, icon: ImageVector, color: Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.height(100.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF161616),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.15f))
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(32.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun ModernButton(label: String, modifier: Modifier, color: Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxHeight(),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF121212),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.2f))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                label, 
+                color = Color.White, 
+                fontWeight = FontWeight.Black, 
+                fontSize = 18.sp
+            )
         }
     }
 }

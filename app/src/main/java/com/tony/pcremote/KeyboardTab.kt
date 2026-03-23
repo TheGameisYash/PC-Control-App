@@ -1,132 +1,154 @@
 package com.tony.pcremote
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun KeyboardTab(viewModel: MainViewModel) {
-    fun key(k: Short)              = viewModel.send(BinaryProtocol.keyPress(k))
-    fun combo(mod: Short, k: Short) = viewModel.send(BinaryProtocol.keyCombo(mod, k))
+    val haptic = LocalHapticFeedback.current
+    val accentColor = Color(0xFF7C4DFF)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D1117))
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-
-        // Header
-        Text(
-            "Keyboard",
-            color      = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize   = 18.sp
-        )
-
-        // ── Function Keys ─────────────────────────────────────────
-        KeySection("FUNCTION KEYS") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    "ESC" to KeyCodes.ESC,
-                    "F4"  to KeyCodes.F4,
-                    "F5"  to KeyCodes.F5,
-                    "F11" to KeyCodes.F11,
-                    "F12" to KeyCodes.F12
-                ).forEach { (label, code) ->
-                    KeyBtn(label, Modifier.weight(1f)) { key(code) }
-                }
-            }
-        }
-
-        // ── Navigation ────────────────────────────────────────────
-        KeySection("NAVIGATION") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                KeyBtn("TAB",   Modifier.weight(1f)) { key(KeyCodes.TAB) }
-                KeyBtn("BKSP",  Modifier.weight(1f)) { key(KeyCodes.BACKSPACE) }
-                KeyBtn("ENTER", Modifier.weight(1f)) { key(KeyCodes.ENTER) }
-                KeyBtn("DEL",   Modifier.weight(1f)) { key(KeyCodes.DELETE) }
-            }
-        }
-
-        // ── Modifiers ─────────────────────────────────────────────
-        KeySection("MODIFIER KEYS") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ModKey("CTRL",  Color(0xFF1F3A5F), Modifier.weight(1f)) { key(KeyCodes.CTRL) }
-                ModKey("ALT",   Color(0xFF1F3A5F), Modifier.weight(1f)) { key(KeyCodes.ALT) }
-                ModKey("SHIFT", Color(0xFF1F3A5F), Modifier.weight(1f)) { key(KeyCodes.SHIFT) }
-                ModKey("SPACE", Color(0xFF21262D), Modifier.weight(1.5f)) { key(KeyCodes.SPACE) }
-            }
-        }
-
-        // ── Arrow Keys ────────────────────────────────────────────
-        KeySection("ARROW KEYS") {
-            Column(
-                Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+        // ── Quick Actions ─────────────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth().height(80.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF121212),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceAround
             ) {
-                KeyBtn("▲", Modifier.size(50.dp)) { key(KeyCodes.UP) }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    KeyBtn("◀", Modifier.size(50.dp)) { key(KeyCodes.LEFT) }
-                    KeyBtn("▼", Modifier.size(50.dp)) { key(KeyCodes.DOWN) }
-                    KeyBtn("▶", Modifier.size(50.dp)) { key(KeyCodes.RIGHT) }
+                QuickActionItem("Esc", accentColor) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.ESC)) }
+                QuickActionItem("Win", accentColor) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.WIN)) }
+                QuickActionItem("Tab", accentColor) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.TAB)) }
+                QuickActionItem("Enter", accentColor) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.ENTER)) }
+            }
+        }
+
+        // ── Navigation & Control ──────────────────────────────
+        ModernKeySection("NAVIGATION") {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                RepeatKeyBtn("Backspace", Icons.Rounded.Backspace, Modifier.weight(1f), KeyCodes.BACKSPACE, viewModel)
+                RepeatKeyBtn("Space", Icons.Rounded.SpaceBar, Modifier.weight(1f), KeyCodes.SPACE, viewModel)
+            }
+            
+            Spacer(Modifier.height(8.dp))
+            
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    KeyButton("Del", Modifier.fillMaxWidth()) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.DELETE)) }
+                    KeyButton("Home", Modifier.fillMaxWidth()) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.HOME)) }
+                }
+                
+                // Arrow Cluster
+                Surface(
+                    modifier = Modifier.weight(1.2f).height(112.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFF0A0A0A),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.03f))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            ArrowKey(Icons.Rounded.KeyboardArrowUp) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.UP)) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                ArrowKey(Icons.Rounded.KeyboardArrowLeft) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.LEFT)) }
+                                ArrowKey(Icons.Rounded.KeyboardArrowDown) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.DOWN)) }
+                                ArrowKey(Icons.Rounded.KeyboardArrowRight) { viewModel.send(BinaryProtocol.keyPress(KeyCodes.RIGHT)) }
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // ── Shortcuts ─────────────────────────────────────────────
-        KeySection("SHORTCUTS") {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ShortcutBtn("Copy  Ctrl+C",  Modifier.weight(1f)) { combo(KeyCodes.CTRL, KeyCodes.C) }
-                    ShortcutBtn("Paste Ctrl+V",  Modifier.weight(1f)) { combo(KeyCodes.CTRL, KeyCodes.V) }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ShortcutBtn("Cut   Ctrl+X",  Modifier.weight(1f)) { combo(KeyCodes.CTRL, KeyCodes.X) }
-                    ShortcutBtn("Undo  Ctrl+Z",  Modifier.weight(1f)) { combo(KeyCodes.CTRL, KeyCodes.Z) }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ShortcutBtn("Alt+F4",  Modifier.weight(1f)) { combo(KeyCodes.ALT,  KeyCodes.F4) }
-                    ShortcutBtn("Ctrl+W",  Modifier.weight(1f)) { combo(KeyCodes.CTRL, KeyCodes.W) }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ShortcutBtn("Ctrl+T",  Modifier.weight(1f)) { combo(KeyCodes.CTRL, KeyCodes.T) }
-                    ShortcutBtn("Win+E",   Modifier.weight(1f)) { combo(KeyCodes.WIN,  KeyCodes.E) }
+        // ── Shortcuts ─────────────────────────────────────────
+        ModernKeySection("SHORTCUTS") {
+            val shortcuts = listOf(
+                Triple("Select All", "Ctrl + A", KeyCodes.A),
+                Triple("Copy", "Ctrl + C", KeyCodes.C),
+                Triple("Paste", "Ctrl + V", KeyCodes.V),
+                Triple("Undo", "Ctrl + Z", KeyCodes.Z)
+            )
+            
+            shortcuts.chunked(2).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { (label, sub, code) ->
+                        ShortcutCard(label, sub, Modifier.weight(1f)) { viewModel.send(BinaryProtocol.keyCombo(KeyCodes.CTRL, code)) }
+                    }
                 }
             }
+        }
+
+        // ── System ────────────────────────────────────────────
+        ModernKeySection("SYSTEM") {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                KeyButton("Alt + F4", Modifier.weight(1f), Color(0xFFFF5252)) { viewModel.send(BinaryProtocol.keyCombo(KeyCodes.ALT, KeyCodes.F4)) }
+                KeyButton("Ctrl+Alt+Del", Modifier.weight(1f)) { /* Special sequence if supported */ }
+            }
+        }
+
+        Spacer(Modifier.height(40.dp))
+    }
+}
+
+@Composable
+fun QuickActionItem(label: String, color: Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = color.copy(alpha = 0.1f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.2f))
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Black)
         }
     }
 }
 
 @Composable
-private fun KeySection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier            = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF161B22))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+fun ModernKeySection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            title,
-            color         = Color(0xFF8B949E),
-            fontSize      = 10.sp,
-            fontWeight    = FontWeight.Bold,
+            title, 
+            color = Color.White.copy(alpha = 0.4f), 
+            fontSize = 11.sp, 
+            fontWeight = FontWeight.Bold, 
             letterSpacing = 1.sp
         )
         content()
@@ -134,45 +156,92 @@ private fun KeySection(title: String, content: @Composable ColumnScope.() -> Uni
 }
 
 @Composable
-fun KeyGroupLabel(text: String) {
-    Text(text, color = Color(0xFF8B949E), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
-}
-
-@Composable
-fun KeyBtn(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Button(
-        onClick        = onClick,
-        modifier       = modifier.height(48.dp),
-        shape          = RoundedCornerShape(10.dp),
-        colors         = ButtonDefaults.buttonColors(containerColor = Color(0xFF21262D)),
-        contentPadding = PaddingValues(4.dp)
+fun KeyButton(label: String, modifier: Modifier = Modifier, color: Color = Color.White.copy(alpha = 0.05f), onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(50.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF161616),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
     ) {
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+        Box(contentAlignment = Alignment.Center) {
+            Text(label, color = if (color == Color.White.copy(alpha = 0.05f)) Color.White else color, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
-private fun ModKey(label: String, color: Color, modifier: Modifier, onClick: () -> Unit) {
-    Button(
-        onClick        = onClick,
-        modifier       = modifier.height(48.dp),
-        shape          = RoundedCornerShape(10.dp),
-        colors         = ButtonDefaults.buttonColors(containerColor = color),
-        contentPadding = PaddingValues(4.dp)
+fun ArrowKey(icon: ImageVector, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(34.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFF1A1A1A),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
     ) {
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF58A6FF))
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
 @Composable
-fun ShortcutBtn(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Button(
-        onClick        = onClick,
-        modifier       = modifier.height(42.dp),
-        shape          = RoundedCornerShape(10.dp),
-        colors         = ButtonDefaults.buttonColors(containerColor = Color(0xFF21262D)),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+fun ShortcutCard(label: String, sub: String, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(64.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF121212),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.03f))
     ) {
-        Text(label, fontSize = 12.sp, color = Color(0xFF58A6FF), fontWeight = FontWeight.Medium)
+        Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.Center) {
+            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(sub, color = Color(0xFF7C4DFF), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+fun RepeatKeyBtn(label: String, icon: ImageVector, modifier: Modifier, keyCode: Short, viewModel: MainViewModel) {
+    val haptic = LocalHapticFeedback.current
+    var isPressing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isPressing) {
+        if (isPressing) {
+            viewModel.send(BinaryProtocol.keyPress(keyCode))
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            delay(400)
+            while (isPressing) {
+                viewModel.send(BinaryProtocol.keyPress(keyCode))
+                delay(80)
+            }
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .height(56.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        isPressing = true
+                        tryAwaitRelease()
+                        isPressing = false
+                    }
+                )
+            },
+        shape = RoundedCornerShape(16.dp),
+        color = if (isPressing) Color(0xFF222222) else Color(0xFF161616),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }

@@ -31,34 +31,6 @@ data class AuthData(
     @SerializedName("lastLogin")      val lastLogin:      String? = null
 )
 
-// ── License status helpers ────────────────────────────────────────────────────
-
-enum class LicenseStatus {
-    ACTIVE,
-    EXPIRED,
-    BANNED,
-    NO_LICENSE,
-    UNKNOWN;
-
-    companion object {
-        fun from(raw: String?): LicenseStatus = when (raw) {
-            "active"          -> ACTIVE
-            "LICENSE_EXPIRED" -> EXPIRED
-            "LICENSE_BANNED"  -> BANNED
-            "NO_LICENSE"      -> NO_LICENSE
-            else              -> UNKNOWN
-        }
-    }
-}
-
-// Convenience — call after login to get a user-friendly status message
-fun AuthData.licenseStatusMessage(): String? = when (licenseWarning) {
-    "LICENSE_BANNED"  -> "⚠️ Your license has been banned. Contact support."
-    "LICENSE_EXPIRED" -> "⚠️ Your license has expired. Please renew."
-    "NO_LICENSE"      -> "⚠️ No license linked to your account."
-    else              -> null   // null = no warning needed
-}
-
 // ── AuthManager ───────────────────────────────────────────────────────────────
 
 object AuthManager {
@@ -126,7 +98,6 @@ object AuthManager {
                 else conn.errorStream ?: conn.inputStream
                 BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
             } catch (e: Exception) {
-                // Can't read body — map HTTP code to known error
                 return httpCodeToResponse(httpCode)
             }
 

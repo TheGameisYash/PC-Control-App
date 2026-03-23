@@ -1,67 +1,68 @@
 package com.tony.pcremote
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
-private data class NavTab(val icon: ImageVector, val label: String)
+private data class NavTab(
+    val icon: ImageVector,
+    val label: String,
+    val activeColor: Color
+)
 
-@OptIn(ExperimentalAnimationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel:    MainViewModel,
     userPrefs:    UserPreferences,
     onDisconnect: () -> Unit,
-    onLoggedOut:  () -> Unit
+    onLogin:      () -> Unit
 ) {
     val isPremium     by userPrefs.isPremium.collectAsState(initial = false)
-    val username      by userPrefs.username.collectAsState(initial = "")
-    val announcements by viewModel.announcements.collectAsState()
+    val pcName        by viewModel.pcName.collectAsState()
+    val isConnected   by viewModel.isConnected.collectAsState()
 
-    LaunchedEffect(Unit) { viewModel.fetchAnnouncements() }
-
-    var selectedTab  by remember { mutableStateOf(0) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showLicense  by remember { mutableStateOf(false) }
-
-    // Track dismissed announcements
-    val dismissed = remember { mutableStateListOf<String>() }
-
-    if (showSettings) {
-        SettingsScreen(
-            userPrefs   = userPrefs,
-            isPremium   = isPremium,
-            viewModel   = viewModel,
-            onBack      = { showSettings = false },
-            onUpgrade   = { showSettings = false; showLicense = true },
-            onLoggedOut = { showSettings = false; viewModel.disconnect(); onLoggedOut() }
+    val navTabs = remember {
+        listOf(
+            NavTab(Icons.Rounded.Mouse, "Remote", Color(0xFF00E5FF)),
+            NavTab(Icons.Rounded.Keyboard, "Keyboard", Color(0xFF7C4DFF)),
+            NavTab(Icons.Rounded.GridView, "Utils", Color(0xFFFF4081)),
+            NavTab(Icons.Rounded.Router, "Connect", Color(0xFF00C853)),
+            NavTab(Icons.Rounded.Person, "Account", Color(0xFFFFAB40))
         )
-        return
+    }
+
+    val pagerState = rememberPagerState(pageCount = { navTabs.size })
+    val scope = rememberCoroutineScope()
+    var showLicense  by remember { mutableStateOf(false) }
+    var activeUtility by remember { mutableStateOf<UtilityType?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.fetchAnnouncements()
     }
 
     if (showLicense) {
@@ -73,258 +74,233 @@ fun MainScreen(
         return
     }
 
-    val navTabs = listOf(
-        NavTab(Icons.Default.TouchApp, "Touchpad"),
-        NavTab(Icons.Default.Computer, "Desktop"),
-        NavTab(Icons.Default.Keyboard, "Keys"),
-        NavTab(Icons.Default.MusicNote, "Media")
+    // Handle Utility Screens Overlay
+    if (activeUtility != null) {
+        when (activeUtility) {
+            UtilityType.REMOTE_DESKTOP -> RemoteDesktopScreen(
+                viewModel = viewModel,
+                userPrefs = userPrefs,
+                isPremium = isPremium,
+                onUpgrade = { showLicense = true },
+                onBack = { activeUtility = null }
+            )
+            UtilityType.TASK_MANAGER -> TaskManagerScreen(viewModel, onBack = { activeUtility = null })
+            UtilityType.FILE_TRANSFER -> FileExplorerScreen(viewModel, onBack = { activeUtility = null })
+            UtilityType.VOLUME_MIXER -> VolumeMixerScreen(viewModel, onBack = { activeUtility = null })
+            UtilityType.TERMINAL -> TerminalScreen(viewModel, onBack = { activeUtility = null })
+            UtilityType.WEBCAM -> { /* Webcam placeholder */ activeUtility = null }
+            else -> activeUtility = null
+        }
+        return
+    }
+
+    // Smoothly animate the background glow color based on pager progress
+    val accentColor by animateColorAsState(
+        targetValue = navTabs[pagerState.currentPage].activeColor,
+        animationSpec = tween(400),
+        label = "AccentColor"
     )
 
-    val isDesktopTab = selectedTab == 1
-
     Scaffold(
-        containerColor = Color(0xFF0D1117),
-        topBar = {
-            if (!isDesktopTab) {
-                TopAppBar(
-                    title = {
-                        Row(
-                            verticalAlignment  = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // Username avatar circle
-                            if (username.isNotEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF2979FF).copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        username.first().uppercaseChar().toString(),
-                                        color      = Color(0xFF2979FF),
-                                        fontSize   = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                            Column {
-                                Row(
-                                    verticalAlignment     = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text(
-                                        "PC Remote",
-                                        color      = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize   = 16.sp
-                                    )
-                                    if (isPremium) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(Color(0xFFFFD700).copy(alpha = 0.15f))
-                                                .padding(horizontal = 5.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                "PRO",
-                                                color      = Color(0xFFFFD700),
-                                                fontSize   = 9.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-                                if (username.isNotEmpty()) {
-                                    Text(
-                                        username,
-                                        color    = Color(0xFF8B949E),
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    actions = {
-                        if (!isPremium) {
-                            TextButton(
-                                onClick = { showLicense = true },
-                                contentPadding = PaddingValues(horizontal = 8.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint     = Color(0xFFFFD700),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "Upgrade",
-                                    color      = Color(0xFFFFD700),
-                                    fontSize   = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = Color(0xFF8B949E)
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.disconnect(); onDisconnect() }
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Disconnect",
-                                tint = Color(0xFFFF5252)
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(0xFF161B22)
-                    )
-                )
-            }
-        },
+        containerColor = Color(0xFF050505),
         bottomBar = {
-            if (!isDesktopTab) {
-                NavigationBar(
-                    containerColor = Color(0xFF161B22),
-                    tonalElevation = 0.dp
-                ) {
-                    navTabs.forEachIndexed { index, tab ->
-                        val selected = selectedTab == index
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick  = { selectedTab = index },
-                            icon = {
-                                Icon(
-                                    tab.icon,
-                                    contentDescription = tab.label,
-                                    modifier = Modifier.size(22.dp)
+            ModernNavigationBar(
+                tabs = navTabs,
+                selectedTab = pagerState.currentPage,
+                onTabSelected = { index ->
+                    scope.launch { 
+                        pagerState.animateScrollToPage(
+                            index, 
+                            animationSpec = spring(stiffness = Spring.StiffnessLow)
+                        ) 
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            // Static Base Background
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF050505)))
+            
+            // Dynamic Accent Glow
+            Box(
+                modifier = Modifier
+                    .size(500.dp)
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-250).dp)
+                    .graphicsLayer { alpha = 0.4f }
+                    .background(Brush.radialGradient(listOf(accentColor.copy(alpha = 0.2f), Color.Transparent)))
+            )
+
+            Column(modifier = Modifier.fillMaxSize()) {
+                HeaderSection(
+                    title = navTabs[pagerState.currentPage].label,
+                    isConnected = isConnected,
+                    pcName = pcName,
+                    accentColor = accentColor,
+                    onAccountClick = { scope.launch { pagerState.animateScrollToPage(4) } }
+                )
+
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                    beyondViewportPageCount = 1,
+                    userScrollEnabled = true,
+                    flingBehavior = PagerDefaults.flingBehavior(state = pagerState),
+                    pageSpacing = 16.dp
+                ) { page ->
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        when (page) {
+                            0 -> TouchpadTab(viewModel)
+                            1 -> KeyboardTab(viewModel)
+                            2 -> UtilitiesTab(
+                                    viewModel = viewModel,
+                                    onNavigateToDesktop = { activeUtility = UtilityType.REMOTE_DESKTOP },
+                                    onUtilitySelected = { activeUtility = it }
                                 )
-                            },
-                            label = {
-                                Text(tab.label, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor   = Color(0xFF2979FF),
-                                selectedTextColor   = Color(0xFF2979FF),
-                                unselectedIconColor = Color(0xFF8B949E),
-                                unselectedTextColor = Color(0xFF8B949E),
-                                indicatorColor      = Color(0xFF2979FF).copy(alpha = 0.12f)
-                            )
-                        )
+                            3 -> ConnectScreen(
+                                    viewModel = viewModel,
+                                    onConnected = { scope.launch { pagerState.animateScrollToPage(0) } },
+                                    onOpenLogin = onLogin
+                                )
+                            4 -> AccountTab(
+                                    userPrefs = userPrefs,
+                                    viewModel = viewModel,
+                                    onLogin = onLogin,
+                                    onUpgrade = { showLicense = true },
+                                    onDisconnect = onDisconnect
+                                )
+                        }
                     }
                 }
             }
         }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .background(Color(0xFF0D1117))
-        ) {
+    }
+}
 
-            // ── Announcement Banners ──────────────────────────────
-            if (!isDesktopTab) {
-                announcements
-                    .filter { it.title !in dismissed }
-                    .forEach { ann ->
-                        val (bgColor, borderColor) = when (ann.type) {
-                            "critical" -> Color(0xFF7F0000) to Color(0xFFFF5252)
-                            "warning"  -> Color(0xFF4A2000) to Color(0xFFFF9100)
-                            "offer"    -> Color(0xFF1A3D00) to Color(0xFF00C853)
-                            else       -> Color(0xFF0D2B6B) to Color(0xFF2979FF)
-                        }
-                        val emoji = when (ann.type) {
-                            "critical" -> "🚨"
-                            "warning"  -> "⚠️"
-                            "offer"    -> "🎉"
-                            else       -> "📢"
-                        }
-                        AnimatedVisibility(
-                            visible = ann.title !in dismissed,
-                            enter   = fadeIn(),
-                            exit    = fadeOut()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(bgColor.copy(alpha = 0.6f))
-                                    .then(
-                                        Modifier.padding(
-                                            start  = 12.dp,
-                                            end    = 4.dp,
-                                            top    = 10.dp,
-                                            bottom = 10.dp
-                                        )
-                                    ),
-                                verticalAlignment     = Alignment.Top,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    modifier              = Modifier.weight(1f),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment     = Alignment.Top
-                                ) {
-                                    Text(emoji, fontSize = 14.sp)
-                                    Column {
-                                        Text(
-                                            ann.title,
-                                            color      = Color.White,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize   = 13.sp
-                                        )
-                                        Text(
-                                            ann.message,
-                                            color      = Color.White.copy(alpha = 0.75f),
-                                            fontSize   = 12.sp,
-                                            lineHeight = 17.sp
-                                        )
-                                    }
-                                }
-                                IconButton(
-                                    onClick  = { dismissed.add(ann.title) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Dismiss",
-                                        tint     = Color.White.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-            }
-
-            // ── Tab Content ───────────────────────────────────────
-            AnimatedContent(
-                targetState   = selectedTab,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label         = "tab",
-                modifier      = Modifier.fillMaxSize()
-            ) { tab ->
-                when (tab) {
-                    0 -> TouchpadTab(viewModel)
-                    1 -> RemoteDesktopScreen(
-                        viewModel = viewModel,
-                        userPrefs = userPrefs,
-                        isPremium = isPremium,
-                        onUpgrade = { showLicense = true },
-                        onBack    = { selectedTab = 0 }
+@Composable
+fun HeaderSection(
+    title: String,
+    isConnected: Boolean,
+    pcName: String,
+    accentColor: Color,
+    onAccountClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = (-1.5).sp
+                )
+            )
+            if (isConnected) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF00E5FF)))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        pcName, 
+                        color = Color.White.copy(alpha = 0.5f), 
+                        fontSize = 12.sp, 
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
                     )
-                    2 -> KeyboardTab(viewModel)
-                    3 -> MediaTab(viewModel)
+                }
+            }
+        }
+        
+        Surface(
+            onClick = onAccountClick,
+            shape = CircleShape,
+            color = Color(0xFF1A1A1A),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+        ) {
+            Icon(
+                Icons.Rounded.Person, 
+                null, 
+                tint = accentColor,
+                modifier = Modifier.padding(10.dp).size(24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModernNavigationBar(
+    tabs: List<NavTab>,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        shape = RoundedCornerShape(32.dp),
+        color = Color(0xFF121212).copy(alpha = 0.98f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+        tonalElevation = 16.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { index, tab ->
+                val isSelected = selectedTab == index
+                
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onTabSelected(index) }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.label,
+                            tint = if (isSelected) tab.activeColor else Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier.size(26.dp)
+                        )
+                        
+                        val dotScale by animateFloatAsState(
+                            targetValue = if (isSelected) 1f else 0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            label = "DotScale"
+                        )
+                        
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .size(4.dp)
+                                .graphicsLayer { 
+                                    scaleX = dotScale
+                                    scaleY = dotScale
+                                    alpha = dotScale
+                                }
+                                .clip(CircleShape)
+                                .background(tab.activeColor)
+                        )
+                    }
                 }
             }
         }

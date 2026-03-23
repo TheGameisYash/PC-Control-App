@@ -1,25 +1,22 @@
 package com.tony.pcremote
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -29,231 +26,201 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun ConnectScreen(viewModel: MainViewModel, onConnected: () -> Unit) {
-    var ip            by remember { mutableStateOf("192.168.1.") }
+fun ConnectScreen(
+    viewModel:   MainViewModel,
+    onConnected: () -> Unit,
+    onOpenLogin: () -> Unit
+) {
+    var ip            by remember { mutableStateOf("") }
     val isConnected   by viewModel.isConnected.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+    val discovered    by viewModel.discoveredDevices.collectAsState()
+    
     val isLoading = statusMessage.contains("Connecting", ignoreCase = true)
-    val hasError  = statusMessage.startsWith("Failed") ||
-            statusMessage.contains("Error",   ignoreCase = true) ||
-            statusMessage.contains("refused", ignoreCase = true)
+    val hasError  = statusMessage.startsWith("Failed") || statusMessage.contains("Error", ignoreCase = true)
 
-    LaunchedEffect(isConnected) { if (isConnected) onConnected() }
+    // Only trigger auto-navigation if the connection was established while on this screen
+    var connectionAttemptActive by remember { mutableStateOf(false) }
 
-    Box(
+    LaunchedEffect(isConnected) { 
+        if (isConnected && connectionAttemptActive) {
+            connectionAttemptActive = false
+            onConnected() 
+        }
+    }
+    
+    DisposableEffect(Unit) {
+        viewModel.startDiscovery()
+        onDispose { viewModel.stopDiscovery() }
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D1117))
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        // Subtle top gradient
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(260.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF0D2B6B).copy(alpha = 0.4f), Color.Transparent)
+        // ── Discovery Section ─────────────────────────────────
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Nearby Devices",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontWeight = FontWeight.Bold
                     )
                 )
-        )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color(0xFF00E5FF),
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+            if (discovered.isEmpty() && !isLoading) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFF121212),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Rounded.Search, null, tint = Color.White.copy(alpha = 0.2f))
+                        Text("Searching for PCs...", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp)
+                    }
+                }
+            } else {
+                discovered.forEach { device ->
+                    DeviceCard(device.name, device.ip) { 
+                        connectionAttemptActive = true
+                        viewModel.connect(device.ip, device.name) 
+                    }
+                }
+            }
+        }
+
+        // ── Manual Entry Section ──────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(32.dp),
+            color = Color(0xFF121212),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
         ) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "Manual Connection",
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp
+                )
+                
+                OutlinedTextField(
+                    value = ip,
+                    onValueChange = { ip = it },
+                    placeholder = { Text("Enter IP Address", color = Color.White.copy(alpha = 0.2f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF00E5FF),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.1f),
+                        cursorColor = Color(0xFF00E5FF),
+                        focusedContainerColor = Color(0xFF080808),
+                        unfocusedContainerColor = Color(0xFF080808)
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { 
+                        if (ip.isNotBlank()) {
+                            connectionAttemptActive = true
+                            viewModel.connect(ip.trim(), "Manual PC")
+                        }
+                    })
+                )
 
-            // ── App Icon ──────────────────────────────────────────
+                if (statusMessage.isNotEmpty() && !isLoading) {
+                    Text(
+                        text = statusMessage,
+                        color = if (hasError) Color(0xFFFF5252) else Color(0xFF00E5FF),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Button(
+                    onClick = { 
+                        if (ip.isNotBlank()) {
+                            connectionAttemptActive = true
+                            viewModel.connect(ip.trim(), "Manual PC")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF00E5FF),
+                        contentColor = Color.Black
+                    ),
+                    enabled = !isLoading
+                ) {
+                    Text("Connect to PC", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                }
+            }
+        }
+        
+        Spacer(Modifier.weight(1f))
+        
+        Text(
+            "Make sure both devices are on the same Wi-Fi network and the PC Remote Server is running.",
+            color = Color.White.copy(alpha = 0.3f),
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+            lineHeight = 16.sp,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+    }
+}
+
+@Composable
+fun DeviceCard(name: String, ip: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF161616),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(
                 modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(Color(0xFF2979FF).copy(alpha = 0.12f))
-                    .border(1.dp, Color(0xFF2979FF).copy(alpha = 0.4f), RoundedCornerShape(22.dp)),
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF00E5FF).copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Computer,
-                    contentDescription = null,
-                    tint     = Color(0xFF2979FF),
-                    modifier = Modifier.size(40.dp)
-                )
+                Icon(Icons.Rounded.DesktopWindows, null, tint = Color(0xFF00E5FF), modifier = Modifier.size(24.dp))
             }
-
-            Spacer(Modifier.height(16.dp))
-
-            Text("PC Remote", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text(
-                "Control your PC from your phone",
-                fontSize = 14.sp,
-                color    = Color(0xFF8B949E),
-                modifier = Modifier.padding(top = 4.dp)
-            )
-
-            Spacer(Modifier.height(32.dp))
-
-            // ── Connection Card ───────────────────────────────────
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape    = RoundedCornerShape(16.dp),
-                colors   = CardDefaults.cardColors(containerColor = Color(0xFF161B22)),
-                border   = BorderStroke(1.dp, Color(0xFF30363D))
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Wifi,
-                            contentDescription = null,
-                            tint     = Color(0xFF2979FF),
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "NETWORK CONNECTION",
-                            fontSize      = 11.sp,
-                            fontWeight    = FontWeight.Bold,
-                            color         = Color(0xFF8B949E),
-                            letterSpacing = 1.sp
-                        )
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    OutlinedTextField(
-                        value         = ip,
-                        onValueChange = { ip = it },
-                        label         = { Text("PC IP Address") },
-                        placeholder   = { Text("e.g. 192.168.1.5", color = Color(0xFF484F58)) },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Number,
-                            imeAction    = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onDone = { viewModel.connect(ip.trim()) }
-                        ),
-                        modifier   = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape      = RoundedCornerShape(10.dp),
-                        colors     = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor     = Color.White,
-                            unfocusedTextColor   = Color.White,
-                            focusedBorderColor   = Color(0xFF2979FF),
-                            unfocusedBorderColor = Color(0xFF30363D),
-                            focusedLabelColor    = Color(0xFF2979FF),
-                            unfocusedLabelColor  = Color(0xFF8B949E),
-                            cursorColor          = Color(0xFF2979FF)
-                        )
-                    )
-
-                    // Status indicator
-                    AnimatedVisibility(
-                        visible = statusMessage.isNotEmpty(),
-                        enter   = fadeIn(),
-                        exit    = fadeOut()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (hasError) Color(0xFFFF5252).copy(alpha = 0.08f)
-                                    else          Color(0xFF2979FF).copy(alpha = 0.08f)
-                                )
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
-                            verticalAlignment     = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (hasError) Color(0xFFFF5252) else Color(0xFF2979FF)
-                                    )
-                            )
-                            Text(
-                                statusMessage,
-                                color    = if (hasError) Color(0xFFFF5252) else Color(0xFF64B5F6),
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    Button(
-                        onClick  = { viewModel.connect(ip.trim()) },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape    = RoundedCornerShape(12.dp),
-                        colors   = ButtonDefaults.buttonColors(
-                            containerColor         = Color(0xFF2979FF),
-                            disabledContainerColor = Color(0xFF2979FF).copy(alpha = 0.4f)
-                        ),
-                        enabled = !isLoading
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                color       = Color.White,
-                                modifier    = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text("Connecting...", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        } else {
-                            Icon(
-                                Icons.Default.Computer,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("CONNECT", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
-                    }
-                }
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(ip, color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
             }
-
-            Spacer(Modifier.height(16.dp))
-
-            // ── Hint Card ─────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF161B22))
-                    .border(1.dp, Color(0xFF30363D), RoundedCornerShape(12.dp))
-                    .padding(14.dp),
-                verticalAlignment     = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("💡", fontSize = 17.sp)
-                Column {
-                    Text(
-                        "How to find your PC IP",
-                        color      = Color.White,
-                        fontSize   = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "Open cmd on your PC → type ipconfig\nLook for IPv4 Address under Wi-Fi",
-                        color      = Color(0xFF8B949E),
-                        fontSize   = 12.sp,
-                        lineHeight = 18.sp
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            Text(
-                "Both devices must be on the same Wi-Fi network",
-                color     = Color(0xFF484F58),
-                fontSize  = 12.sp,
-                textAlign = TextAlign.Center
-            )
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Rounded.ChevronRight, null, tint = Color.White.copy(alpha = 0.2f))
         }
     }
 }
