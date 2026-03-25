@@ -3,7 +3,7 @@ name: Build & Release Android APK
 on:
   push:
     tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v2.0.1
+      - 'v*'
 
 jobs:
   build:
@@ -21,6 +21,15 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Decode Keystore
+        id: decode_keystore
+        run: |
+          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 --decode > app/release.keystore
+          echo "storeFile=release.keystore" > keystore.properties
+          echo "storePassword=${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" >> keystore.properties
+          echo "keyAlias=${{ secrets.RELEASE_KEY_ALIAS }}" >> keystore.properties
+          echo "keyPassword=${{ secrets.RELEASE_KEY_PASSWORD }}" >> keystore.properties
+
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
@@ -31,10 +40,7 @@ jobs:
         id: version_info
         run: |
           VERSION_NAME=$(grep "versionName =" app/build.gradle.kts | awk -F'"' '{print $2}')
-          VERSION_CODE=$(grep "versionCode =" app/build.gradle.kts | awk '{print $3}')
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
-          echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
 
       - name: Create Release
         id: create_release
@@ -45,6 +51,6 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
