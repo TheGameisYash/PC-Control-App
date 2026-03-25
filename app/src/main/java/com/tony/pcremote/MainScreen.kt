@@ -39,8 +39,7 @@ private data class NavTab(
 fun MainScreen(
     viewModel:    MainViewModel,
     userPrefs:    UserPreferences,
-    onDisconnect: () -> Unit,
-    onLogin:      () -> Unit
+    onDisconnect: () -> Unit
 ) {
     val isPremium     by userPrefs.isPremium.collectAsState(initial = false)
     val pcName        by viewModel.pcName.collectAsState()
@@ -165,12 +164,11 @@ fun MainScreen(
                             3 -> ConnectScreen(
                                     viewModel = viewModel,
                                     onConnected = { scope.launch { pagerState.animateScrollToPage(0) } },
-                                    onOpenLogin = onLogin
+                                    onOpenLogin = { scope.launch { pagerState.animateScrollToPage(4) } }
                                 )
                             4 -> AccountTab(
                                     userPrefs = userPrefs,
                                     viewModel = viewModel,
-                                    onLogin = onLogin,
                                     onUpgrade = { showLicense = true },
                                     onDisconnect = onDisconnect
                                 )

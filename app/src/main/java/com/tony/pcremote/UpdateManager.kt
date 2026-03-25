@@ -36,7 +36,7 @@ object UpdateManager {
     private const val TAG = "UpdateManager"
     
     // ⚠️ Uses GitHub API to find the latest release
-    private const val GITHUB_API_URL = "https://api.github.com/repos/yash2/PCRemote/releases/latest"
+    private const val GITHUB_API_URL = "https://api.github.com/repos/thegameisyash/PC-Control-App/releases/latest"
     private val client = OkHttpClient()
 
     suspend fun checkForUpdate(currentVersionCode: Int): UpdateInfo? =

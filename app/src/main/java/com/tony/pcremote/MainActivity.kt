@@ -2,7 +2,6 @@ package com.tony.pcremote
 
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,7 +21,7 @@ class MainActivity : ComponentActivity() {
         
         // ✅ High Refresh Rate Optimization
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.attributes.preferredDisplayModeId = 0 // Allow system to pick best mode for high refresh
+            window.attributes.preferredDisplayModeId = 0 
         } else {
             @Suppress("DEPRECATION")
             val modes = window.windowManager.defaultDisplay.supportedModes
@@ -52,7 +51,6 @@ fun AppRoot(
     viewModel:   MainViewModel,
     userPrefs:   UserPreferences
 ) {
-    var screen      by remember { mutableStateOf("main") }
     var updateInfo  by remember { mutableStateOf<UpdateInfo?>(null) }
 
     LaunchedEffect(Unit) {
@@ -66,19 +64,9 @@ fun AppRoot(
         )
     }
 
-    when (screen) {
-        "login" -> LoginScreen(
-            userPrefs  = userPrefs,
-            onLoggedIn = { screen = "main" },
-            onBack     = { screen = "main" }
-        )
-        "main" -> {
-            MainScreen(
-                viewModel    = viewModel,
-                userPrefs    = userPrefs,
-                onDisconnect = { /* Handled within MainScreen connection tab */ },
-                onLogin      = { screen = "login" }
-            )
-        }
-    }
+    MainScreen(
+        viewModel    = viewModel,
+        userPrefs    = userPrefs,
+        onDisconnect = { /* Handled within MainScreen connection tab */ }
+    )
 }

@@ -31,10 +31,17 @@ fun UpdateDialog(
     var progress by remember { mutableIntStateOf(-1) }
     var isDone   by remember { mutableStateOf(false) }
 
+    // Use tag name directly if it already contains 'v', otherwise prepend 'v'
+    val displayVersion = if (info.version_name.startsWith("v", ignoreCase = true)) {
+        info.version_name
+    } else {
+        "v${info.version_name}"
+    }
+
     AlertDialog(
         onDismissRequest = { if (progress == -1) onDismiss() },
         title = {
-            Text("Update Available — v${info.version_name}")
+            Text("Update Available — $displayVersion")
         },
         text = {
             Column(
@@ -69,7 +76,8 @@ fun UpdateDialog(
                             isDone = true
                             UpdateManager.installApk(context, file)
                         }
-                        onDismiss()
+                        // Don't dismiss immediately if we want to show 'Done' state, 
+                        // but usually the installer activity will take over.
                     }
                 },
                 enabled = progress == -1
