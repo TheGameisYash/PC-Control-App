@@ -17,6 +17,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.roundToInt
@@ -49,6 +50,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _announcements = MutableStateFlow<List<Announcement>>(emptyList())
     val announcements: StateFlow<List<Announcement>> = _announcements
+
+    // ✅ UPDATE STATE
+    private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
+    val updateInfo: StateFlow<UpdateInfo?> = _updateInfo
+
+    private val _updateProgress = MutableStateFlow(-1) // -1 = not downloading
+    val updateProgress: StateFlow<Int> = _updateProgress
+    
+    private val _downloadedUpdateFile = MutableStateFlow<File?>(null)
+    val downloadedUpdateFile: StateFlow<File?> = _downloadedUpdateFile
 
     // ✅ UTILITIES STATE
     private val _processes = MutableStateFlow<List<ProcessInfo>>(emptyList())
@@ -84,6 +95,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         Log.d(TAG, "ViewModel initialized")
         
+        // ✅ Check for app updates automatically on startup
+        checkForUpdates()
+
         // ✅ License validation
         viewModelScope.launch {
             try {
@@ -174,6 +188,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing response: ${e.message}")
         }
+    }
+
+    private fun checkForUpdates() {
+        viewModelScope.launch {
+            try {
+                val info = UpdateManager.checkForUpdate(BuildConfig.VERSION_CODE)
+                if (info != null) {
+                    _updateInfo.value = info
+                    Log.d(TAG, "Update available: ${info.version_name}. Starting silent download...")
+                    startSilentDownload(getApplication<Application>().applicationContext, info.apk_url)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Update check failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun startSilentDownload(context: Context, url: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _updateProgress.value = 0
+                val file = UpdateManager.downloadApk(context, url) { progress ->
+                    _updateProgress.value = progress
+                }
+                if (file != null) {
+                    _downloadedUpdateFile.value = file
+                    Log.d(TAG, "Update APK downloaded silently: ${file.absolutePath}")
+                }
+                _updateProgress.value = -1
+            } catch (e: Exception) {
+                Log.e(TAG, "Silent download failed: ${e.message}")
+                _updateProgress.value = -1
+            }
+        }
+    }
+
+    fun installUpdate(context: Context) {
+        val file = _downloadedUpdateFile.value
+        if (file != null) {
+            UpdateManager.installApk(context, file)
+        } else {
+            // If file not downloaded yet, trigger download and install
+            downloadAndInstallUpdate(context)
+        }
+    }
+
+    fun downloadAndInstallUpdate(context: Context) {
+        val info = _updateInfo.value ?: return
+        viewModelScope.launch {
+            _updateProgress.value = 0
+            val file = UpdateManager.downloadApk(context, info.apk_url) { progress ->
+                _updateProgress.value = progress
+            }
+            if (file != null) {
+                _downloadedUpdateFile.value = file
+                UpdateManager.installApk(context, file)
+            }
+            _updateProgress.value = -1
+        }
+    }
+
+    fun dismissUpdate() {
+        _updateInfo.value = null
     }
 
     fun startDiscovery() {
@@ -356,14 +433,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 Log.d(TAG, "Fetching announcements...")
                 val request = Request.Builder()
-                    .url("https://license-system-pi.vercel.app/api/announcements?softwareId=pc-remote-mn009le4")
+                    .url("https://license-system-pi.vercel.app/api/software/pc-remote-mn009le4/announcements")
                     .get()
                     .build()
 
                 okHttpClient.newCall(request).execute().use { response ->
                     val body = response.body?.string() ?: return@use
                     val json = JSONObject(body)
-                    val arr = json.optJSONArray("announcements") ?: return@use
+                    // The API returns { "success": true, "data": { "announcements": [...] } }
+                    val dataObj = json.optJSONObject("data") ?: return@use
+                    val arr = dataObj.optJSONArray("announcements") ?: return@use
 
                     val list = (0 until arr.length()).map { i ->
                         val obj = arr.getJSONObject(i)
