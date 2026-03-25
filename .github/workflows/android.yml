@@ -24,7 +24,7 @@ jobs:
       - name: Decode Keystore
         id: decode_keystore
         run: |
-          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 --decode > app/release.keystore
+          printf "%s" "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
           echo "storeFile=release.keystore" > keystore.properties
           echo "storePassword=${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" >> keystore.properties
           echo "keyAlias=${{ secrets.RELEASE_KEY_ALIAS }}" >> keystore.properties
