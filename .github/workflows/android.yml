@@ -22,19 +22,19 @@ jobs:
           cache: 'gradle'
 
       - name: Decode Keystore
-        id: decode_keystore
         run: |
-          printf "%s" "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
-          echo "storeFile=release.keystore" > keystore.properties
-          echo "storePassword=${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" >> keystore.properties
-          echo "keyAlias=${{ secrets.RELEASE_KEY_ALIAS }}" >> keystore.properties
-          echo "keyPassword=${{ secrets.RELEASE_KEY_PASSWORD }}" >> keystore.properties
+          printf "%s" "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
 
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
       - name: Build Release APK
         run: ./gradlew assembleRelease --stacktrace
+        env:
+          RELEASE_STORE_FILE: release.keystore
+          RELEASE_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Extract Version Info
         id: version_info

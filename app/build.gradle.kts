@@ -15,16 +15,12 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.tony.pcremote"
 
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.tony.pcremote"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 6
         versionName = "1.6"
 
@@ -33,17 +29,31 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(keystoreProperties["storeFile"] ?: "release.keystore")
-            storePassword = keystoreProperties["storePassword"] as String?
-            keyAlias = keystoreProperties["keyAlias"] as String?
-            keyPassword = keystoreProperties["keyPassword"] as String?
+            // Priority: Environment Variables (CI) > keystore.properties (Local)
+            val sFile = System.getenv("RELEASE_STORE_FILE") ?: keystoreProperties["storeFile"]?.toString() ?: "release.keystore"
+            val sPass = System.getenv("RELEASE_STORE_PASSWORD") ?: keystoreProperties["storePassword"]?.toString()
+            val kAlias = System.getenv("RELEASE_KEY_ALIAS") ?: keystoreProperties["keyAlias"]?.toString()
+            val kPass = System.getenv("RELEASE_KEY_PASSWORD") ?: keystoreProperties["keyPassword"]?.toString()
+
+            if (sPass != null && kAlias != null && kPass != null) {
+                storeFile = file(sFile)
+                storePassword = sPass
+                keyAlias = kAlias
+                keyPassword = kPass
+            }
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            
+            val sFile = System.getenv("RELEASE_STORE_FILE") ?: keystoreProperties["storeFile"]?.toString() ?: "release.keystore"
+            if (file(sFile).exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
